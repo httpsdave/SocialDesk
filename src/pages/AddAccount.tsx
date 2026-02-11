@@ -115,6 +115,7 @@ export default function AddAccount() {
           .select('id, platform, platform_username, platform_display_name, platform_avatar_url, is_active, connected_at')
           .eq('user_id', user.id)
           .eq('is_active', true)
+          .returns<ConnectedAccount[]>()
           .then(({ data }) => {
             if (data) setConnectedAccounts(data);
           });
@@ -139,7 +140,8 @@ export default function AddAccount() {
         .from('connected_accounts')
         .select('id, platform, platform_username, platform_display_name, platform_avatar_url, is_active, connected_at')
         .eq('user_id', user.id)
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .returns<ConnectedAccount[]>();
 
       if (error) {
         toast.error('Failed to load connected accounts');
@@ -218,8 +220,8 @@ export default function AddAccount() {
   const confirmDisconnect = async () => {
     if (!selectedPlatform?.connectedAccount) return;
 
-    const { error } = await supabase
-      .from('connected_accounts')
+    const { error } = await (supabase
+      .from('connected_accounts') as any)
       .update({ is_active: false })
       .eq('id', selectedPlatform.connectedAccount.id);
 

@@ -89,7 +89,8 @@ export default function Dashboard() {
         .from('connected_accounts')
         .select('id, platform, platform_username, platform_display_name, followers_count, is_active')
         .eq('user_id', user.id)
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .returns<{ id: string; platform: string; platform_username: string | null; platform_display_name: string | null; followers_count: number; is_active: boolean }[]>();
 
       if (accounts) {
         const platformNames: Record<string, string> = {
@@ -113,7 +114,8 @@ export default function Dashboard() {
         .select('*', { count: 'exact' })
         .eq('user_id', user.id)
         .order('created_at', { ascending: false })
-        .limit(5);
+        .limit(5)
+        .returns<{ id: string; platforms: string[]; status: string; created_at: string }[]>();
 
       if (posts) {
         setRecentPosts(posts.map(p => {
