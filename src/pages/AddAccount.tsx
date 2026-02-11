@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { Facebook, Instagram, Twitter, Youtube, Check, Loader2, Unplug } from 'lucide-react';
 import { toast } from 'sonner';
 import ConfirmationModal from '../components/ConfirmationModal';
@@ -76,10 +76,22 @@ const PLATFORM_DEFS: Omit<SocialPlatform, 'connectedAccount'>[] = [
     color: 'bg-red-600',
     description: 'Create bite-sized vertical videos',
   },
+  {
+    id: 'pinterest',
+    name: 'Pinterest',
+    icon: () => (
+      <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8">
+        <path d="M12 0C5.373 0 0 5.372 0 12c0 5.084 3.163 9.426 7.627 11.174-.105-.949-.2-2.405.042-3.441.218-.937 1.407-5.965 1.407-5.965s-.359-.719-.359-1.782c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.029-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.207 0 1.031.397 2.138.893 2.738a.36.36 0 01.083.345l-.333 1.36c-.053.22-.174.267-.402.161-1.499-.698-2.436-2.889-2.436-4.649 0-3.785 2.75-7.262 7.929-7.262 4.163 0 7.398 2.967 7.398 6.931 0 4.136-2.607 7.464-6.227 7.464-1.216 0-2.359-.631-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24 12 24c6.627 0 12-5.373 12-12 0-6.628-5.373-12-12-12z"/>
+      </svg>
+    ),
+    color: 'bg-red-700',
+    description: 'Pin and discover creative ideas and inspiration',
+  },
 ];
 
 export default function AddAccount() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -87,6 +99,35 @@ export default function AddAccount() {
   const [showDisconnectModal, setShowDisconnectModal] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState<SocialPlatform | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+
+  // Handle OAuth callback redirects
+  useEffect(() => {
+    const success = searchParams.get('success');
+    const error = searchParams.get('error');
+    const platform = searchParams.get('platform');
+
+    if (success === 'true' && platform) {
+      toast.success(`${platform.charAt(0).toUpperCase() + platform.slice(1)} connected successfully!`);
+      // Refresh accounts
+      if (user) {
+        supabase
+          .from('connected_accounts')
+          .select('id, platform, platform_username, platform_display_name, platform_avatar_url, is_active, connected_at')
+          .eq('user_id', user.id)
+          .eq('is_active', true)
+          .then(({ data }) => {
+            if (data) setConnectedAccounts(data);
+          });
+      }
+    } else if (error) {
+      toast.error(`Connection failed: ${decodeURIComponent(error)}`);
+    }
+
+    // Clean up URL params
+    if (success || error) {
+      navigate('/app/add-account', { replace: true });
+    }
+  }, [searchParams, user, navigate]);
 
   // Fetch connected accounts from Supabase
   useEffect(() => {
@@ -131,29 +172,47 @@ export default function AddAccount() {
   };
 
   // Initiate OAuth flow — redirects user to the platform's authorization page
-  // The actual OAuth callback handling requires a backend edge function to exchange
-  // the authorization code for tokens and store them in connected_accounts
   const confirmConnect = async () => {
     if (!selectedPlatform || !user) return;
     setIsConnecting(true);
 
-    // In production, this would redirect to:
-    // - TikTok: https://www.tiktok.com/v2/auth/authorize/
-    // - X: https://twitter.com/i/oauth2/authorize
-    // - Facebook/Instagram: https://www.facebook.com/v19.0/dialog/oauth
-    // - YouTube/Shorts: https://accounts.google.com/o/oauth2/v2/auth
-    //
-    // The redirect_uri would point to a Supabase Edge Function that:
-    // 1. Exchanges the auth code for access/refresh tokens
-    // 2. Fetches the user's platform profile info
-    // 3. Inserts into connected_accounts table
-    // 4. Redirects back to /app/add-account
+    const platform = selectedPlatform.id;
+    const redirectUri = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/oauth-callback`;
+    const state = `${platform}:${user.id}`;
 
-    // For now, show that the infrastructure is ready
-    toast.info(`OAuth flow for ${selectedPlatform.name} requires platform developer credentials. Configure your app keys in the Supabase Edge Function.`);
-    setIsConnecting(false);
-    setShowConnectModal(false);
-    setSelectedPlatform(null);
+    try {
+      let authUrl = '';
+
+      if (platform === 'youtube' || platform === 'youtube-shorts') {
+        // Google OAuth for YouTube
+        const params = new URLSearchParams({
+          client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+          redirect_uri: redirectUri,
+          response_type: 'code',
+          scope: 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly https://www.googleapis.com/auth/youtube.force-ssl',
+          state,
+          access_type: 'offline',
+          prompt: 'consent',
+        });
+        authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+      } else {
+        // Other platforms not yet implemented
+        toast.info(`${selectedPlatform.name} OAuth requires platform developer credentials. Add your API keys first.`);
+        setIsConnecting(false);
+        setShowConnectModal(false);
+        setSelectedPlatform(null);
+        return;
+      }
+
+      // Redirect to OAuth provider
+      window.location.href = authUrl;
+    } catch (error) {
+      console.error('OAuth initiation error:', error);
+      toast.error('Failed to start OAuth flow');
+      setIsConnecting(false);
+      setShowConnectModal(false);
+      setSelectedPlatform(null);
+    }
   };
 
   const confirmDisconnect = async () => {

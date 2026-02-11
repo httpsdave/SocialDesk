@@ -33,6 +33,7 @@ const PLATFORMS: Platform[] = [
   { id: 'instagram', name: 'Instagram', charLimit: 2200 },
   { id: 'youtube', name: 'YouTube', charLimit: 5000 },
   { id: 'youtube-shorts', name: 'YouTube Shorts', charLimit: 5000 },
+  { id: 'pinterest', name: 'Pinterest', charLimit: 500 },
 ];
 
 export default function PostScheduling() {

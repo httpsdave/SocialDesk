@@ -186,7 +186,7 @@ export interface Database {
     Functions: Record<string, never>;
     Enums: {
       post_status: 'draft' | 'scheduled' | 'published' | 'failed';
-      platform_type: 'tiktok' | 'x' | 'facebook' | 'instagram' | 'youtube' | 'youtube-shorts';
+      platform_type: 'tiktok' | 'x' | 'facebook' | 'instagram' | 'youtube' | 'youtube-shorts' | 'pinterest';
     };
   };
 }

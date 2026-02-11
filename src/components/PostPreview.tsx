@@ -50,6 +50,13 @@ const platformConfigs = {
     bgColor: 'bg-white',
     textColor: 'text-gray-900',
   },
+  pinterest: {
+    name: 'Pinterest',
+    gradient: 'from-red-600 to-red-700',
+    charLimit: 500,
+    bgColor: 'bg-white',
+    textColor: 'text-gray-900',
+  },
 };
 
 export default function PostPreview({ platform, content, mediaUrl, mediaType }: PostPreviewProps) {
@@ -203,6 +210,31 @@ export default function PostPreview({ platform, content, mediaUrl, mediaType }: 
           <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent text-white">
             <p className="font-semibold mb-1">@yourbrand</p>
             <p className="text-sm opacity-90">{truncatedContent}</p>
+          </div>
+        </div>
+      );
+    }
+
+    // Pinterest style
+    if (platform === 'pinterest') {
+      return (
+        <div className="bg-white rounded-2xl overflow-hidden max-w-xs border border-gray-200 shadow-sm">
+          <div className="aspect-[2/3] bg-gray-100 flex items-center justify-center">
+            {mediaUrl ? (
+              <img src={mediaUrl} alt="Pin" className="w-full h-full object-cover" />
+            ) : (
+              <div className="text-center text-gray-400">
+                <p className="text-4xl mb-2">📌</p>
+                <p className="text-sm">Pin image</p>
+              </div>
+            )}
+          </div>
+          <div className="p-3">
+            <p className="font-semibold text-gray-900 text-sm line-clamp-2 mb-1">{truncatedContent}</p>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-red-400 to-red-600" />
+              <p className="text-xs text-gray-500">Your Brand</p>
+            </div>
           </div>
         </div>
       );

@@ -27,9 +27,13 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- 2. CONNECTED ACCOUNTS TABLE
 -- Stores OAuth tokens for each social platform
 -- ============================================================
-CREATE TYPE public.platform_type AS ENUM (
-  'tiktok', 'x', 'facebook', 'instagram', 'youtube', 'youtube-shorts'
-);
+DO $$ BEGIN
+  CREATE TYPE public.platform_type AS ENUM (
+    'tiktok', 'x', 'facebook', 'instagram', 'youtube', 'youtube-shorts', 'pinterest'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.connected_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -55,9 +59,13 @@ CREATE TABLE IF NOT EXISTS public.connected_accounts (
 -- 3. POSTS TABLE
 -- All posts (drafts, scheduled, published)
 -- ============================================================
-CREATE TYPE public.post_status AS ENUM (
-  'draft', 'scheduled', 'published', 'failed'
-);
+DO $$ BEGIN
+  CREATE TYPE public.post_status AS ENUM (
+    'draft', 'scheduled', 'published', 'failed'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 CREATE TABLE IF NOT EXISTS public.posts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -93,12 +101,12 @@ CREATE TABLE IF NOT EXISTS public.analytics_cache (
 -- ============================================================
 -- INDEXES for performance
 -- ============================================================
-CREATE INDEX idx_connected_accounts_user ON public.connected_accounts(user_id);
-CREATE INDEX idx_posts_user ON public.posts(user_id);
-CREATE INDEX idx_posts_status ON public.posts(status);
-CREATE INDEX idx_posts_scheduled ON public.posts(scheduled_at) WHERE status = 'scheduled';
-CREATE INDEX idx_analytics_cache_user ON public.analytics_cache(user_id);
-CREATE INDEX idx_analytics_cache_account ON public.analytics_cache(connected_account_id);
+CREATE INDEX IF NOT EXISTS idx_connected_accounts_user ON public.connected_accounts(user_id);
+CREATE INDEX IF NOT EXISTS idx_posts_user ON public.posts(user_id);
+CREATE INDEX IF NOT EXISTS idx_posts_status ON public.posts(status);
+CREATE INDEX IF NOT EXISTS idx_posts_scheduled ON public.posts(scheduled_at) WHERE status = 'scheduled';
+CREATE INDEX IF NOT EXISTS idx_analytics_cache_user ON public.analytics_cache(user_id);
+CREATE INDEX IF NOT EXISTS idx_analytics_cache_account ON public.analytics_cache(connected_account_id);
 
 -- ============================================================
 -- ROW LEVEL SECURITY (RLS) - Users can only access their own data
@@ -107,15 +115,18 @@ CREATE INDEX idx_analytics_cache_account ON public.analytics_cache(connected_acc
 -- Profiles
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own profile" ON public.profiles;
 CREATE POLICY "Users can view own profile"
   ON public.profiles FOR SELECT
   USING (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can update own profile" ON public.profiles;
 CREATE POLICY "Users can update own profile"
   ON public.profiles FOR UPDATE
   USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Users can insert own profile" ON public.profiles;
 CREATE POLICY "Users can insert own profile"
   ON public.profiles FOR INSERT
   WITH CHECK (auth.uid() = id);
@@ -123,19 +134,23 @@ CREATE POLICY "Users can insert own profile"
 -- Connected Accounts
 ALTER TABLE public.connected_accounts ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own connected accounts" ON public.connected_accounts;
 CREATE POLICY "Users can view own connected accounts"
   ON public.connected_accounts FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own connected accounts" ON public.connected_accounts;
 CREATE POLICY "Users can insert own connected accounts"
   ON public.connected_accounts FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own connected accounts" ON public.connected_accounts;
 CREATE POLICY "Users can update own connected accounts"
   ON public.connected_accounts FOR UPDATE
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete own connected accounts" ON public.connected_accounts;
 CREATE POLICY "Users can delete own connected accounts"
   ON public.connected_accounts FOR DELETE
   USING (auth.uid() = user_id);
@@ -143,19 +158,23 @@ CREATE POLICY "Users can delete own connected accounts"
 -- Posts
 ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own posts" ON public.posts;
 CREATE POLICY "Users can view own posts"
   ON public.posts FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own posts" ON public.posts;
 CREATE POLICY "Users can insert own posts"
   ON public.posts FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own posts" ON public.posts;
 CREATE POLICY "Users can update own posts"
   ON public.posts FOR UPDATE
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can delete own posts" ON public.posts;
 CREATE POLICY "Users can delete own posts"
   ON public.posts FOR DELETE
   USING (auth.uid() = user_id);
@@ -163,14 +182,17 @@ CREATE POLICY "Users can delete own posts"
 -- Analytics Cache
 ALTER TABLE public.analytics_cache ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own analytics" ON public.analytics_cache;
 CREATE POLICY "Users can view own analytics"
   ON public.analytics_cache FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own analytics" ON public.analytics_cache;
 CREATE POLICY "Users can insert own analytics"
   ON public.analytics_cache FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own analytics" ON public.analytics_cache;
 CREATE POLICY "Users can update own analytics"
   ON public.analytics_cache FOR UPDATE
   USING (auth.uid() = user_id);
@@ -208,16 +230,19 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_profiles_updated_at ON public.profiles;
 CREATE TRIGGER update_profiles_updated_at
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW
   EXECUTE FUNCTION public.update_updated_at();
 
+DROP TRIGGER IF EXISTS update_connected_accounts_updated_at ON public.connected_accounts;
 CREATE TRIGGER update_connected_accounts_updated_at
   BEFORE UPDATE ON public.connected_accounts
   FOR EACH ROW
   EXECUTE FUNCTION public.update_updated_at();
 
+DROP TRIGGER IF EXISTS update_posts_updated_at ON public.posts;
 CREATE TRIGGER update_posts_updated_at
   BEFORE UPDATE ON public.posts
   FOR EACH ROW
@@ -240,38 +265,47 @@ VALUES ('post-media', 'post-media', true)
 ON CONFLICT DO NOTHING;
 
 -- Storage policies
+DROP POLICY IF EXISTS "Users can upload own avatar" ON storage.objects;
 CREATE POLICY "Users can upload own avatar"
   ON storage.objects FOR INSERT
   WITH CHECK (bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
 
+DROP POLICY IF EXISTS "Anyone can view avatars" ON storage.objects;
 CREATE POLICY "Anyone can view avatars"
   ON storage.objects FOR SELECT
   USING (bucket_id = 'avatars');
 
+DROP POLICY IF EXISTS "Users can update own avatar" ON storage.objects;
 CREATE POLICY "Users can update own avatar"
   ON storage.objects FOR UPDATE
   USING (bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
 
+DROP POLICY IF EXISTS "Users can delete own avatar" ON storage.objects;
 CREATE POLICY "Users can delete own avatar"
   ON storage.objects FOR DELETE
   USING (bucket_id = 'avatars' AND auth.uid()::text = (storage.foldername(name))[1]);
 
+DROP POLICY IF EXISTS "Users can upload own cover" ON storage.objects;
 CREATE POLICY "Users can upload own cover"
   ON storage.objects FOR INSERT
   WITH CHECK (bucket_id = 'covers' AND auth.uid()::text = (storage.foldername(name))[1]);
 
+DROP POLICY IF EXISTS "Anyone can view covers" ON storage.objects;
 CREATE POLICY "Anyone can view covers"
   ON storage.objects FOR SELECT
   USING (bucket_id = 'covers');
 
+DROP POLICY IF EXISTS "Users can upload post media" ON storage.objects;
 CREATE POLICY "Users can upload post media"
   ON storage.objects FOR INSERT
   WITH CHECK (bucket_id = 'post-media' AND auth.uid()::text = (storage.foldername(name))[1]);
 
+DROP POLICY IF EXISTS "Anyone can view post media" ON storage.objects;
 CREATE POLICY "Anyone can view post media"
   ON storage.objects FOR SELECT
   USING (bucket_id = 'post-media');
 
+DROP POLICY IF EXISTS "Users can delete own post media" ON storage.objects;
 CREATE POLICY "Users can delete own post media"
   ON storage.objects FOR DELETE
   USING (bucket_id = 'post-media' AND auth.uid()::text = (storage.foldername(name))[1]);

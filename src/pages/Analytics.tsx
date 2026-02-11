@@ -35,6 +35,7 @@ const generateData = (days: number) => {
       x: Math.floor(Math.random() * 100) + 100,
       youtube: Math.floor(Math.random() * 180) + 160,
       'youtube-shorts': Math.floor(Math.random() * 140) + 130,
+      pinterest: Math.floor(Math.random() * 110) + 100,
     });
   }
   return data;
@@ -56,7 +57,8 @@ const platformDistribution = [
   { name: 'TikTok', value: 18, color: '#000000' },
   { name: 'X', value: 15, color: '#1DA1F2' },
   { name: 'YouTube', value: 13, color: '#FF0000' },
-  { name: 'YouTube Shorts', value: 12, color: '#FF4444' },
+  { name: 'YouTube Shorts', value: 10, color: '#FF4444' },
+  { name: 'Pinterest', value: 8, color: '#E60023' },
 ];
 
 const topPosts = [
@@ -213,6 +215,13 @@ export default function Analytics() {
               stroke="#FF4444"
               strokeWidth={2}
               name="YouTube Shorts"
+            />
+            <Line
+              type="monotone"
+              dataKey="pinterest"
+              stroke="#E60023"
+              strokeWidth={2}
+              name="Pinterest"
             />
           </LineChart>
         </ResponsiveContainer>
