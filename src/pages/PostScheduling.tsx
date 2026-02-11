@@ -1,9 +1,11 @@
-import { useState } from 'react';
-import { Calendar as CalendarIcon, Clock, Image as ImageIcon, Video, Plus, Trash2, Edit2, X, Eye, LayoutList, CalendarDays } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Calendar as CalendarIcon, Clock, Image as ImageIcon, Video, Plus, Trash2, Edit2, X, Eye, LayoutList, CalendarDays, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import ConfirmationModal from '../components/ConfirmationModal';
 import PostPreview from '../components/PostPreview';
 import Calendar from '../components/Calendar';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 interface ScheduledPost {
   id: string;
@@ -11,9 +13,10 @@ interface ScheduledPost {
   platforms: string[];
   scheduledDate: string;
   scheduledTime: string;
-  status: 'scheduled' | 'published' | 'failed';
+  status: 'draft' | 'scheduled' | 'published' | 'failed';
   mediaType?: 'image' | 'video';
   mediaUrl?: string;
+  mediaUrls?: string[];
   mediaFile?: File;
 }
 
@@ -32,29 +35,11 @@ const PLATFORMS: Platform[] = [
   { id: 'youtube-shorts', name: 'YouTube Shorts', charLimit: 5000 },
 ];
 
-const mockScheduledPosts: ScheduledPost[] = [
-  {
-    id: '1',
-    content: 'Check out our new product launch! 🚀',
-    platforms: ['facebook', 'instagram'],
-    scheduledDate: '2026-02-12',
-    scheduledTime: '14:00',
-    status: 'scheduled',
-    mediaType: 'image',
-  },
-  {
-    id: '2',
-    content: 'Behind the scenes of our team working hard!',
-    platforms: ['tiktok'],
-    scheduledDate: '2026-02-11',
-    scheduledTime: '10:30',
-    status: 'scheduled',
-    mediaType: 'video',
-  },
-];
-
 export default function PostScheduling() {
-  const [scheduledPosts, setScheduledPosts] = useState<ScheduledPost[]>(mockScheduledPosts);
+  const { user } = useAuth();
+  const [scheduledPosts, setScheduledPosts] = useState<ScheduledPost[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [showNewPostForm, setShowNewPostForm] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [postToDelete, setPostToDelete] = useState<string | null>(null);
@@ -69,6 +54,67 @@ export default function PostScheduling() {
     scheduledDate: '',
     scheduledTime: '',
   });
+
+  // Fetch posts from Supabase
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchPosts = async () => {
+      setIsLoading(true);
+      const { data, error } = await supabase
+        .from('posts')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('scheduled_at', { ascending: false });
+
+      if (error) {
+        toast.error('Failed to load posts');
+        console.error(error);
+      } else if (data) {
+        const mapped: ScheduledPost[] = data.map((row) => {
+          const scheduledAt = row.scheduled_at ? new Date(row.scheduled_at) : null;
+          const firstMedia = row.media_urls?.[0];
+          return {
+            id: row.id,
+            content: row.content,
+            platforms: row.platforms,
+            scheduledDate: scheduledAt ? scheduledAt.toISOString().split('T')[0] : '',
+            scheduledTime: scheduledAt ? scheduledAt.toTimeString().slice(0, 5) : '',
+            status: row.status,
+            mediaUrl: firstMedia || undefined,
+            mediaUrls: row.media_urls || undefined,
+            mediaType: firstMedia ? (firstMedia.match(/\.(mp4|webm|mov)/) ? 'video' : 'image') : undefined,
+          };
+        });
+        setScheduledPosts(mapped);
+      }
+      setIsLoading(false);
+    };
+
+    fetchPosts();
+  }, [user]);
+
+  // Upload media to Supabase Storage and return the public URL
+  const uploadMedia = async (file: File): Promise<string | null> => {
+    if (!user) return null;
+    const fileExt = file.name.split('.').pop();
+    const filePath = `${user.id}/${Date.now()}.${fileExt}`;
+
+    const { error } = await supabase.storage
+      .from('post-media')
+      .upload(filePath, file, { upsert: true });
+
+    if (error) {
+      toast.error('Failed to upload media');
+      return null;
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('post-media')
+      .getPublicUrl(filePath);
+
+    return publicUrl;
+  };
 
   const getCharLimit = () => {
     if (newPost.platforms.length === 0 || editingPost?.platforms.length === 0) return null;
@@ -118,26 +164,62 @@ export default function PostScheduling() {
     setMediaPreview(null);
   };
 
-  const handleCreatePost = () => {
-    if (newPost.content && newPost.platforms.length > 0 && newPost.scheduledDate && newPost.scheduledTime) {
-      const post: ScheduledPost = {
-        id: Date.now().toString(),
+  const handleCreatePost = async () => {
+    if (!user || !newPost.content || newPost.platforms.length === 0 || !newPost.scheduledDate || !newPost.scheduledTime) return;
+
+    setIsSaving(true);
+
+    // Upload media if present
+    let mediaUrl: string | null = null;
+    if (mediaFile) {
+      mediaUrl = await uploadMedia(mediaFile);
+      if (!mediaUrl) {
+        setIsSaving(false);
+        return;
+      }
+    }
+
+    const scheduledAt = new Date(`${newPost.scheduledDate}T${newPost.scheduledTime}`).toISOString();
+
+    const { data, error } = await supabase
+      .from('posts')
+      .insert({
+        user_id: user.id,
         content: newPost.content,
         platforms: newPost.platforms,
-        scheduledDate: newPost.scheduledDate,
-        scheduledTime: newPost.scheduledTime,
+        scheduled_at: scheduledAt,
         status: 'scheduled',
-        mediaFile: mediaFile || undefined,
-        mediaType: mediaFile ? (mediaFile.type.startsWith('video/') ? 'video' : 'image') : undefined,
-        mediaUrl: mediaPreview || undefined,
-      };
-      setScheduledPosts([post, ...scheduledPosts]);
-      setNewPost({ content: '', platforms: [], scheduledDate: '', scheduledTime: '' });
-      setMediaFile(null);
-      setMediaPreview(null);
-      setShowNewPostForm(false);
-      toast.success('Post scheduled successfully');
+        media_urls: mediaUrl ? [mediaUrl] : null,
+        char_count: newPost.content.length,
+      })
+      .select()
+      .single();
+
+    setIsSaving(false);
+
+    if (error) {
+      toast.error('Failed to schedule post');
+      console.error(error);
+      return;
     }
+
+    // Add to local state
+    const mapped: ScheduledPost = {
+      id: data.id,
+      content: data.content,
+      platforms: data.platforms,
+      scheduledDate: newPost.scheduledDate,
+      scheduledTime: newPost.scheduledTime,
+      status: data.status,
+      mediaUrl: mediaUrl || undefined,
+      mediaType: mediaFile ? (mediaFile.type.startsWith('video/') ? 'video' : 'image') : undefined,
+    };
+    setScheduledPosts([mapped, ...scheduledPosts]);
+    setNewPost({ content: '', platforms: [], scheduledDate: '', scheduledTime: '' });
+    setMediaFile(null);
+    setMediaPreview(null);
+    setShowNewPostForm(false);
+    toast.success('Post scheduled successfully');
   };
 
   const handleEditClick = (post: ScheduledPost) => {
@@ -146,21 +228,56 @@ export default function PostScheduling() {
     setShowNewPostForm(false);
   };
 
-  const handleUpdatePost = () => {
-    if (editingPost && editingPost.content && editingPost.platforms.length > 0) {
-      setScheduledPosts(scheduledPosts.map(post => 
-        post.id === editingPost.id ? {
-          ...editingPost,
-          mediaFile: mediaFile || editingPost.mediaFile,
-          mediaType: mediaFile ? (mediaFile.type.startsWith('video/') ? 'video' : 'image') : editingPost.mediaType,
-          mediaUrl: mediaPreview || editingPost.mediaUrl,
-        } : post
-      ));
-      setEditingPost(null);
-      setMediaFile(null);
-      setMediaPreview(null);
-      toast.success('Post updated successfully');
+  const handleUpdatePost = async () => {
+    if (!editingPost || !editingPost.content || editingPost.platforms.length === 0) return;
+
+    setIsSaving(true);
+
+    // Upload new media if present
+    let mediaUrl = editingPost.mediaUrl || null;
+    if (mediaFile) {
+      const uploaded = await uploadMedia(mediaFile);
+      if (!uploaded) {
+        setIsSaving(false);
+        return;
+      }
+      mediaUrl = uploaded;
     }
+
+    const scheduledAt = editingPost.scheduledDate && editingPost.scheduledTime
+      ? new Date(`${editingPost.scheduledDate}T${editingPost.scheduledTime}`).toISOString()
+      : null;
+
+    const { error } = await supabase
+      .from('posts')
+      .update({
+        content: editingPost.content,
+        platforms: editingPost.platforms,
+        scheduled_at: scheduledAt,
+        media_urls: mediaUrl ? [mediaUrl] : null,
+        char_count: editingPost.content.length,
+      })
+      .eq('id', editingPost.id);
+
+    setIsSaving(false);
+
+    if (error) {
+      toast.error('Failed to update post');
+      console.error(error);
+      return;
+    }
+
+    setScheduledPosts(scheduledPosts.map(post =>
+      post.id === editingPost.id ? {
+        ...editingPost,
+        mediaUrl: mediaUrl || editingPost.mediaUrl,
+        mediaType: mediaFile ? (mediaFile.type.startsWith('video/') ? 'video' : 'image') : editingPost.mediaType,
+      } : post
+    ));
+    setEditingPost(null);
+    setMediaFile(null);
+    setMediaPreview(null);
+    toast.success('Post updated successfully');
   };
 
   const cancelEdit = () => {
@@ -175,13 +292,26 @@ export default function PostScheduling() {
     setShowDeleteModal(true);
   };
 
-  const confirmDelete = () => {
-    if (postToDelete) {
-      setScheduledPosts(scheduledPosts.filter((post) => post.id !== postToDelete));
+  const confirmDelete = async () => {
+    if (!postToDelete) return;
+
+    const { error } = await supabase
+      .from('posts')
+      .delete()
+      .eq('id', postToDelete);
+
+    if (error) {
+      toast.error('Failed to delete post');
+      console.error(error);
       setShowDeleteModal(false);
       setPostToDelete(null);
-      toast.success('Post deleted successfully');
+      return;
     }
+
+    setScheduledPosts(scheduledPosts.filter((post) => post.id !== postToDelete));
+    setShowDeleteModal(false);
+    setPostToDelete(null);
+    toast.success('Post deleted successfully');
   };
 
   return (
@@ -339,10 +469,11 @@ export default function PostScheduling() {
           <div className="flex items-center gap-3">
             <button
               onClick={handleCreatePost}
-              disabled={charsRemaining !== null && charsRemaining < 0}
-              className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+              disabled={(charsRemaining !== null && charsRemaining < 0) || isSaving}
+              className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              Schedule Post
+              {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+              {isSaving ? 'Scheduling...' : 'Schedule Post'}
             </button>
             <button
               onClick={() => setShowPreview(!showPreview)}
@@ -494,10 +625,11 @@ export default function PostScheduling() {
           <div className="flex items-center gap-3">
             <button
               onClick={handleUpdatePost}
-              disabled={charsRemaining !== null && charsRemaining < 0}
-              className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+              disabled={(charsRemaining !== null && charsRemaining < 0) || isSaving}
+              className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              Update Post
+              {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+              {isSaving ? 'Updating...' : 'Update Post'}
             </button>
             <button
               onClick={cancelEdit}
@@ -510,7 +642,18 @@ export default function PostScheduling() {
       )}
 
       {/* Scheduled Posts - List or Calendar View */}
-      {viewMode === 'calendar' ? (
+      {isLoading ? (
+        <div className="space-y-4">
+          <h2 className="text-xl font-bold text-gray-900">Scheduled Posts</h2>
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-white rounded-xl p-6 border border-gray-200 animate-pulse">
+              <div className="h-4 bg-gray-200 rounded w-3/4 mb-3" />
+              <div className="h-3 bg-gray-200 rounded w-1/2 mb-2" />
+              <div className="h-3 bg-gray-200 rounded w-1/4" />
+            </div>
+          ))}
+        </div>
+      ) : viewMode === 'calendar' ? (
         <Calendar
           posts={scheduledPosts}
           onPostClick={(post) => handleEditClick(post)}

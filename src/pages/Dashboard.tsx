@@ -1,40 +1,10 @@
-import { useState } from 'react';
-import { Users, Heart, MessageCircle, TrendingUp } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Users, Heart, MessageCircle, TrendingUp, Link } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
-const stats = [
-  {
-    label: 'Total Followers',
-    value: '45.2K',
-    change: '+12.5%',
-    icon: Users,
-    color: 'purple',
-  },
-  {
-    label: 'Total Engagement',
-    value: '8.4K',
-    change: '+8.2%',
-    icon: Heart,
-    color: 'pink',
-  },
-  {
-    label: 'Comments',
-    value: '1.2K',
-    change: '+15.3%',
-    icon: MessageCircle,
-    color: 'blue',
-  },
-  {
-    label: 'Avg. Growth',
-    value: '+234',
-    change: '+5.7%',
-    icon: TrendingUp,
-    color: 'green',
-  },
-];
-
-// Color mapping to avoid dynamic Tailwind classes being purged
 const colorClasses: Record<string, { bg: string; text: string }> = {
   purple: { bg: 'bg-purple-100', text: 'text-purple-600' },
   pink: { bg: 'bg-pink-100', text: 'text-pink-600' },
@@ -85,13 +55,6 @@ const platformIcons: Record<string, React.FC<{ className?: string }>> = {
   ),
 };
 
-const recentActivity = [
-  { action: 'Posted on Facebook', time: '2 hours ago', status: 'success' },
-  { action: 'Scheduled TikTok video', time: '4 hours ago', status: 'scheduled' },
-  { action: 'Posted on Instagram', time: '1 day ago', status: 'success' },
-  { action: 'Facebook post failed', time: '2 days ago', status: 'failed' },
-];
-
 const weeklyData = [
   { day: 'Mon', followers: 120 },
   { day: 'Tue', followers: 180 },
@@ -104,30 +67,138 @@ const weeklyData = [
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const { user, profile: authProfile } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
-  
-  // Simulate loading data
-  useState(() => {
-    const timer = setTimeout(() => setIsLoading(false), 800);
-    return () => clearTimeout(timer);
-  });
-  
-  // Dynamic connected accounts - in a real app, this would come from backend/state
-  const [connectedAccounts] = useState<ConnectedAccount[]>([
-    { id: 'tiktok', platform: 'TikTok', username: '@yourbrand', followers: '12.8K', status: 'connected', icon: 'tiktok' },
-    { id: 'x', platform: 'X', username: '@yourbrand', followers: '8.3K', status: 'connected', icon: 'x' },
-    { id: 'facebook', platform: 'Facebook', username: '@yourbrand', followers: '25.4K', status: 'connected', icon: 'facebook' },
-    { id: 'instagram', platform: 'Instagram', username: '@yourbrand', followers: '18.2K', status: 'connected', icon: 'instagram' },
-    { id: 'youtube', platform: 'YouTube', username: '@yourbrand', followers: '5.1K', status: 'connected', icon: 'youtube' },
-    { id: 'youtube-shorts', platform: 'YouTube Shorts', username: '@yourbrand', followers: '3.7K', status: 'connected', icon: 'youtube-shorts' },
-  ]);
+  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
+  const [recentPosts, setRecentPosts] = useState<{ action: string; time: string; status: string }[]>([]);
+  const [postCount, setPostCount] = useState(0);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const loadDashboard = async () => {
+      setIsLoading(true);
+
+      // Fetch connected accounts
+      const { data: accounts } = await supabase
+        .from('connected_accounts')
+        .select('id, platform, platform_username, platform_display_name, followers_count, is_active')
+        .eq('user_id', user.id)
+        .eq('is_active', true);
+
+      if (accounts) {
+        const platformNames: Record<string, string> = {
+          tiktok: 'TikTok', x: 'X', facebook: 'Facebook',
+          instagram: 'Instagram', youtube: 'YouTube', 'youtube-shorts': 'YouTube Shorts',
+        };
+        setConnectedAccounts(accounts.map(a => ({
+          id: a.platform,
+          platform: platformNames[a.platform] || a.platform,
+          username: a.platform_username ? `@${a.platform_username}` : 'Connected',
+          followers: formatCount(a.followers_count || 0),
+          status: 'connected' as const,
+          icon: a.platform,
+        })));
+      }
+
+      // Fetch recent posts for activity feed
+      const { data: posts, count } = await supabase
+        .from('posts')
+        .select('*', { count: 'exact' })
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (posts) {
+        setRecentPosts(posts.map(p => {
+          const platformNames = p.platforms.map((pl: string) => {
+            const names: Record<string, string> = {
+              tiktok: 'TikTok', x: 'X', facebook: 'Facebook',
+              instagram: 'Instagram', youtube: 'YouTube', 'youtube-shorts': 'YouTube Shorts',
+            };
+            return names[pl] || pl;
+          }).join(', ');
+
+          const actionPrefix = p.status === 'published' ? 'Posted on'
+            : p.status === 'scheduled' ? 'Scheduled for'
+            : p.status === 'failed' ? 'Failed on'
+            : 'Draft for';
+
+          return {
+            action: `${actionPrefix} ${platformNames}`,
+            time: timeAgo(new Date(p.created_at)),
+            status: p.status === 'published' ? 'success' : p.status === 'scheduled' ? 'scheduled' : 'failed',
+          };
+        }));
+      }
+
+      setPostCount(count || 0);
+      setIsLoading(false);
+    };
+
+    loadDashboard();
+  }, [user]);
+
+  const formatCount = (n: number): string => {
+    if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
+    if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
+    return n.toString();
+  };
+
+  const timeAgo = (date: Date): string => {
+    const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+    if (seconds < 60) return 'Just now';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  };
+
+  // Derive stats from real data
+  const totalFollowers = connectedAccounts.reduce((sum, a) => {
+    const num = parseFloat(a.followers.replace(/[KMk]/g, '')) * (a.followers.includes('K') || a.followers.includes('k') ? 1000 : a.followers.includes('M') ? 1000000 : 1);
+    return sum + num;
+  }, 0);
+
+  const dynamicStats = [
+    {
+      label: 'Connected Accounts',
+      value: connectedAccounts.length.toString(),
+      change: connectedAccounts.length > 0 ? `${connectedAccounts.length} platforms` : 'None yet',
+      icon: Users,
+      color: 'purple',
+    },
+    {
+      label: 'Total Followers',
+      value: formatCount(totalFollowers),
+      change: 'Across all platforms',
+      icon: Heart,
+      color: 'pink',
+    },
+    {
+      label: 'Total Posts',
+      value: postCount.toString(),
+      change: 'All time',
+      icon: MessageCircle,
+      color: 'blue',
+    },
+    {
+      label: 'Scheduled',
+      value: recentPosts.filter(p => p.status === 'scheduled').length.toString(),
+      change: 'Upcoming posts',
+      icon: TrendingUp,
+      color: 'green',
+    },
+  ];
   
   return (
     <div className="p-4 lg:p-8 space-y-6">
       {/* Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Dashboard</h1>
-        <p className="text-gray-600">Welcome back! Here's your social media overview</p>
+        <p className="text-gray-600">Welcome back{authProfile?.full_name ? `, ${authProfile.full_name}` : ''}! Here's your social media overview</p>
       </div>
 
       {/* Stats Grid */}
@@ -147,7 +218,7 @@ export default function Dashboard() {
             </div>
           ))
         ) : (
-          stats.map((stat) => {
+          dynamicStats.map((stat) => {
             const colors = colorClasses[stat.color] || { bg: 'bg-gray-100', text: 'text-gray-600' };
             return (
               <div key={stat.label} className="bg-white rounded-xl p-6 border border-gray-200 hover:shadow-lg transition-shadow">
@@ -155,7 +226,7 @@ export default function Dashboard() {
                   <div>
                     <p className="text-sm text-gray-600 mb-1">{stat.label}</p>
                     <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-                    <p className="text-sm text-green-600 mt-2">{stat.change} this week</p>
+                    <p className="text-sm text-gray-500 mt-2">{stat.change}</p>
                   </div>
                   <div className={`p-3 rounded-lg ${colors.bg}`}>
                     <stat.icon className={`w-6 h-6 ${colors.text}`} />
@@ -189,25 +260,29 @@ export default function Dashboard() {
         {/* Recent Activity */}
         <div className="bg-white rounded-xl p-6 border border-gray-200">
           <h2 className="text-xl font-bold text-gray-900 mb-4">Recent Activity</h2>
-          <div className="space-y-4">
-            {recentActivity.map((activity, index) => (
-              <div key={index} className="flex items-start gap-3">
-                <div
-                  className={`w-2 h-2 rounded-full mt-2 ${
-                    activity.status === 'success'
-                      ? 'bg-green-500'
-                      : activity.status === 'scheduled'
-                      ? 'bg-blue-500'
-                      : 'bg-red-500'
-                  }`}
-                />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900">{activity.action}</p>
-                  <p className="text-xs text-gray-500">{activity.time}</p>
+          {recentPosts.length === 0 ? (
+            <p className="text-gray-500 text-sm py-4">No recent activity yet. Create your first post!</p>
+          ) : (
+            <div className="space-y-4">
+              {recentPosts.map((activity, index) => (
+                <div key={index} className="flex items-start gap-3">
+                  <div
+                    className={`w-2 h-2 rounded-full mt-2 ${
+                      activity.status === 'success'
+                        ? 'bg-green-500'
+                        : activity.status === 'scheduled'
+                        ? 'bg-blue-500'
+                        : 'bg-red-500'
+                    }`}
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-900">{activity.action}</p>
+                    <p className="text-xs text-gray-500">{activity.time}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

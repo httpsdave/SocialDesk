@@ -6,7 +6,7 @@ import { useAuth } from '../contexts/AuthContext';
 
 export default function MainLayout() {
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { signOut, profile } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -59,9 +59,9 @@ export default function MainLayout() {
     setShowLogoutModal(true);
   };
 
-  const confirmLogout = () => {
+  const confirmLogout = async () => {
     setShowLogoutModal(false);
-    logout();
+    await signOut();
     navigate('/');
   };
 
@@ -222,14 +222,27 @@ export default function MainLayout() {
                   ? 'px-4 py-3 rounded-lg hover:bg-gray-200' 
                   : 'justify-center'
               }`}
-              title={!sidebarOpen ? 'Account' : ''}
+              title={!sidebarOpen ? (profile?.full_name || 'Account') : ''}
             >
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white flex-shrink-0 shadow-md">
-                <User className="w-5 h-5" />
-              </div>
+              {profile?.avatar_url ? (
+                <img 
+                  src={profile.avatar_url} 
+                  alt={profile.full_name || 'User'} 
+                  className="w-10 h-10 rounded-full flex-shrink-0 shadow-md object-cover"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white flex-shrink-0 shadow-md">
+                  <span className="text-sm font-bold">
+                    {profile?.full_name?.charAt(0)?.toUpperCase() || <User className="w-5 h-5" />}
+                  </span>
+                </div>
+              )}
               {sidebarOpen && (
                 <>
-                  <span className="font-medium text-gray-700 flex-1 text-left">Account</span>
+                  <div className="flex-1 text-left min-w-0">
+                    <p className="font-medium text-gray-700 truncate">{profile?.full_name || 'User'}</p>
+                    <p className="text-xs text-gray-500 truncate">{profile?.email || ''}</p>
+                  </div>
                   <ChevronUp className={`w-4 h-4 flex-shrink-0 text-gray-700 transition-transform duration-200 ${showUserMenu ? 'rotate-180' : 'rotate-0'}`} />
                 </>
               )}

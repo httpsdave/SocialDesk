@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { User, Lock, Eye, EyeOff, TrendingUp, BarChart3, Zap, ArrowRight, Mail, AlertCircle } from 'lucide-react';
+import { User, Lock, Eye, EyeOff, TrendingUp, BarChart3, Zap, ArrowRight, Mail, AlertCircle, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { signIn, signUp, signInWithGoogle, isAuthenticated } = useAuth();
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showSignUpPassword, setShowSignUpPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -17,65 +17,94 @@ export default function Login() {
   const [signUpEmail, setSignUpEmail] = useState('');
   const [signUpPassword, setSignUpPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<{
+    loginEmail?: string;
+    loginPassword?: string;
     signUpEmail?: string;
     signUpPassword?: string;
     confirmPassword?: string;
   }>({});
+
+  // Redirect if already authenticated
+  if (isAuthenticated) {
+    navigate('/app', { replace: true });
+    return null;
+  }
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   };
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Call login from auth context
-    login();
+    setIsSubmitting(true);
+    setErrors({});
+    
+    const { error } = await signIn(email, password);
+    
+    if (error) {
+      setIsSubmitting(false);
+      if (error.toLowerCase().includes('invalid')) {
+        toast.error('Invalid email or password');
+        setErrors({ loginPassword: 'Invalid email or password' });
+      } else if (error.toLowerCase().includes('email not confirmed')) {
+        toast.error('Please verify your email address first');
+      } else {
+        toast.error(error);
+      }
+      return;
+    }
+    
     toast.success('Logged in successfully!');
     navigate('/app');
   };
 
-  const handleSignUp = (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Reset errors
     const newErrors: typeof errors = {};
     
-    // Validate email format
     if (!validateEmail(signUpEmail)) {
       newErrors.signUpEmail = 'Please enter a valid email address';
     }
-    
-    // Validate password length
     if (signUpPassword.length < 8) {
       newErrors.signUpPassword = 'Password must be at least 8 characters long';
     }
-    
-    // Validate passwords match
     if (signUpPassword !== confirmPassword) {
       newErrors.confirmPassword = 'Passwords do not match';
     }
     
     setErrors(newErrors);
-    
-    // If there are errors, show toast and don't proceed
     if (Object.keys(newErrors).length > 0) {
       toast.error('Please fix the errors in the form');
       return;
     }
     
-    // Success - show toast and navigate
-    login();
-    toast.success('Account created successfully!');
-    navigate('/app');
+    setIsSubmitting(true);
+    const { error } = await signUp(signUpEmail, signUpPassword, signUpName);
+    
+    if (error) {
+      setIsSubmitting(false);
+      if (error.toLowerCase().includes('already registered')) {
+        toast.error('An account with this email already exists');
+        setErrors({ signUpEmail: 'This email is already registered' });
+      } else {
+        toast.error(error);
+      }
+      return;
+    }
+    
+    setIsSubmitting(false);
+    toast.success('Account created! Check your email to verify your account.');
   };
 
-  const handleGoogleLogin = () => {
-    // Mock Google login
-    login();
-    toast.success('Logged in with Google!');
-    navigate('/app');
+  const handleGoogleLogin = async () => {
+    const { error } = await signInWithGoogle();
+    if (error) {
+      toast.error('Google sign-in failed: ' + error);
+    }
   };
 
   const toggleCard = () => {
@@ -210,10 +239,17 @@ export default function Login() {
 
             <button
               type="submit"
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3.5 rounded-2xl font-semibold transition-all shadow-lg shadow-purple-500/30 hover:shadow-xl hover:shadow-purple-500/40 flex items-center justify-center gap-2 group mt-6"
+              disabled={isSubmitting}
+              className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white py-3.5 rounded-2xl font-semibold transition-all shadow-lg shadow-purple-500/30 hover:shadow-xl hover:shadow-purple-500/40 flex items-center justify-center gap-2 group mt-6"
             >
-              <span>Sign In</span>
-              <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              {isSubmitting ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <>
+                  <span>Sign In</span>
+                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
             </button>
           </form>
 
@@ -427,10 +463,17 @@ export default function Login() {
 
             <button
               type="submit"
-              className="w-full bg-purple-600 hover:bg-purple-700 text-white py-3.5 rounded-2xl font-semibold transition-all shadow-lg shadow-purple-500/30 hover:shadow-xl hover:shadow-purple-500/40 flex items-center justify-center gap-2 group mt-4"
+              disabled={isSubmitting}
+              className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white py-3.5 rounded-2xl font-semibold transition-all shadow-lg shadow-purple-500/30 hover:shadow-xl hover:shadow-purple-500/40 flex items-center justify-center gap-2 group mt-4"
             >
-              <span>Create Account</span>
-              <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+              {isSubmitting ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <>
+                  <span>Create Account</span>
+                  <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
             </button>
           </form>
 

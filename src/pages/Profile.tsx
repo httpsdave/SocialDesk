@@ -1,53 +1,127 @@
-import { useState } from 'react';
-import { Camera, Mail, Phone, MapPin, Calendar, Award, BarChart3 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Camera, Mail, Calendar, Award, BarChart3, Loader2, Globe } from 'lucide-react';
 import { toast } from 'sonner';
+import { useNavigate } from 'react-router';
 import ConfirmationModal from '../components/ConfirmationModal';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 export default function Profile() {
+  const navigate = useNavigate();
+  const { user, profile: authProfile, refreshProfile, signOut } = useAuth();
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [coverFile, setCoverFile] = useState<File | null>(null);
-  const [originalProfile, setOriginalProfile] = useState({
-    name: 'Sarah Johnson',
-    email: 'sarah.johnson@example.com',
-    phone: '+1 (555) 123-4567',
-    location: 'San Francisco, CA',
-    bio: 'Digital marketing specialist passionate about social media growth and engagement. Helping brands tell their stories.',
-    company: 'Creative Agency Inc.',
-    website: 'www.creativeagency.com',
-    joinDate: 'January 2024',
+  const [isSaving, setIsSaving] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const [profile, setProfile] = useState({
+    full_name: '',
+    bio: '',
+    website: '',
   });
-  const [profile, setProfile] = useState(originalProfile);
+
+  // Load profile data
+  useEffect(() => {
+    if (authProfile) {
+      setProfile({
+        full_name: authProfile.full_name || '',
+        bio: authProfile.bio || '',
+        website: authProfile.website || '',
+      });
+    }
+  }, [authProfile]);
 
   const stats = [
-    { label: 'Posts Created', value: '248', icon: BarChart3 },
-    { label: 'Total Reach', value: '1.2M', icon: Award },
-    { label: 'Accounts Managed', value: '6', icon: Calendar },
+    { label: 'Posts Created', value: '0', icon: BarChart3 },
+    { label: 'Total Reach', value: '0', icon: Award },
+    { label: 'Accounts Managed', value: '0', icon: Calendar },
   ];
 
-  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setAvatarFile(file);
-      toast.success('Avatar uploaded successfully');
-      // In a real app, upload to server and update profile
+    if (!file || !user) return;
+
+    // Preview
+    setAvatarPreview(URL.createObjectURL(file));
+
+    const fileExt = file.name.split('.').pop();
+    const filePath = `${user.id}/avatar.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(filePath, file, { upsert: true });
+
+    if (uploadError) {
+      toast.error('Failed to upload avatar');
+      setAvatarPreview(null);
+      return;
     }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('avatars')
+      .getPublicUrl(filePath);
+
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ avatar_url: publicUrl })
+      .eq('id', user.id);
+
+    if (updateError) {
+      toast.error('Failed to update profile');
+      return;
+    }
+
+    await refreshProfile();
+    toast.success('Avatar updated successfully');
   };
 
-  const handleCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setCoverFile(file);
-      toast.success('Cover photo uploaded successfully');
-      // In a real app, upload to server and update cover
+    if (!file || !user) return;
+
+    setCoverPreview(URL.createObjectURL(file));
+
+    const fileExt = file.name.split('.').pop();
+    const filePath = `${user.id}/cover.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('covers')
+      .upload(filePath, file, { upsert: true });
+
+    if (uploadError) {
+      toast.error('Failed to upload cover photo');
+      setCoverPreview(null);
+      return;
     }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('covers')
+      .getPublicUrl(filePath);
+
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ cover_url: publicUrl })
+      .eq('id', user.id);
+
+    if (updateError) {
+      toast.error('Failed to update profile');
+      return;
+    }
+
+    await refreshProfile();
+    toast.success('Cover photo updated successfully');
   };
 
   const handleCancel = () => {
-    setProfile(originalProfile);
-    setAvatarFile(null);
-    setCoverFile(null);
+    if (authProfile) {
+      setProfile({
+        full_name: authProfile.full_name || '',
+        bio: authProfile.bio || '',
+        website: authProfile.website || '',
+      });
+    }
+    setAvatarPreview(null);
+    setCoverPreview(null);
     toast.info('Changes cancelled');
   };
 
@@ -55,23 +129,50 @@ export default function Profile() {
     setShowSaveModal(true);
   };
 
-  const confirmSave = () => {
-    setOriginalProfile(profile);
+  const confirmSave = async () => {
+    if (!user) return;
+    setIsSaving(true);
     setShowSaveModal(false);
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        full_name: profile.full_name,
+        bio: profile.bio,
+        website: profile.website,
+      })
+      .eq('id', user.id);
+
+    setIsSaving(false);
+
+    if (error) {
+      toast.error('Failed to save profile');
+      return;
+    }
+
+    await refreshProfile();
     toast.success('Profile updated successfully');
-    // In a real app, save to backend here
   };
 
   const handleDeleteAccount = () => {
     setShowDeleteModal(true);
   };
 
-  const confirmDelete = () => {
-    // In a real app, delete account and redirect to login
+  const confirmDelete = async () => {
     setShowDeleteModal(false);
-    toast.success('Account deleted successfully');
-    console.log('Account deleted');
+    // Note: Full account deletion requires server-side function
+    // For now, sign out and show message
+    toast.success('Account deletion request submitted. Please contact support.');
+    await signOut();
+    navigate('/');
   };
+
+  const joinDate = user?.created_at 
+    ? new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : '';
+
+  const avatarUrl = avatarPreview || authProfile?.avatar_url;
+  const coverUrl = coverPreview || authProfile?.cover_url;
 
   return (
     <div className="p-4 lg:p-8 space-y-6">
@@ -84,8 +185,9 @@ export default function Profile() {
       {/* Profile Card */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {/* Cover Image */}
-        <div className="h-32 bg-gradient-to-r from-purple-600 to-blue-600 relative">
-          <label className="absolute top-4 right-4 p-2 bg-white bg-opacity-20 backdrop-blur-sm rounded-lg text-white hover:bg-opacity-30 transition-colors cursor-pointer">
+        <div className="h-32 relative" style={coverUrl ? { backgroundImage: `url(${coverUrl})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}>
+          {!coverUrl && <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-blue-600" />}
+          <label className="absolute top-4 right-4 p-2 bg-white bg-opacity-20 backdrop-blur-sm rounded-lg text-white hover:bg-opacity-30 transition-colors cursor-pointer z-10">
             <input
               type="file"
               accept="image/*"
@@ -100,9 +202,13 @@ export default function Profile() {
         <div className="px-6 pb-6">
           {/* Avatar */}
           <div className="relative -mt-16 mb-4">
-            <div className="w-32 h-32 rounded-full bg-gradient-to-br from-purple-400 to-blue-400 border-4 border-white flex items-center justify-center text-white text-4xl font-bold">
-              SJ
-            </div>
+            {avatarUrl ? (
+              <img src={avatarUrl} alt={authProfile?.full_name || 'User'} className="w-32 h-32 rounded-full border-4 border-white object-cover" />
+            ) : (
+              <div className="w-32 h-32 rounded-full bg-gradient-to-br from-purple-400 to-blue-400 border-4 border-white flex items-center justify-center text-white text-4xl font-bold">
+                {authProfile?.full_name?.charAt(0)?.toUpperCase() || '?'}
+              </div>
+            )}
             <label className="absolute bottom-2 right-2 p-2 bg-purple-600 rounded-full text-white hover:bg-purple-700 transition-colors shadow-lg cursor-pointer">
               <input
                 type="file"
@@ -116,8 +222,8 @@ export default function Profile() {
 
           {/* Name & Title */}
           <div className="mb-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-1">{profile.name}</h2>
-            <p className="text-gray-600">{profile.company}</p>
+            <h2 className="text-2xl font-bold text-gray-900 mb-1">{authProfile?.full_name || 'User'}</h2>
+            <p className="text-gray-600">{authProfile?.email}</p>
           </div>
 
           {/* Stats */}
@@ -136,26 +242,24 @@ export default function Profile() {
           {/* Bio */}
           <div className="mb-6">
             <h3 className="text-sm font-medium text-gray-700 mb-2">About</h3>
-            <p className="text-gray-600">{profile.bio}</p>
+            <p className="text-gray-600">{authProfile?.bio || 'No bio yet'}</p>
           </div>
 
           {/* Contact Info */}
           <div className="space-y-3 text-sm">
             <div className="flex items-center gap-3 text-gray-600">
               <Mail className="w-4 h-4" />
-              <span>{profile.email}</span>
+              <span>{authProfile?.email}</span>
             </div>
-            <div className="flex items-center gap-3 text-gray-600">
-              <Phone className="w-4 h-4" />
-              <span>{profile.phone}</span>
-            </div>
-            <div className="flex items-center gap-3 text-gray-600">
-              <MapPin className="w-4 h-4" />
-              <span>{profile.location}</span>
-            </div>
+            {authProfile?.website && (
+              <div className="flex items-center gap-3 text-gray-600">
+                <Globe className="w-4 h-4" />
+                <span>{authProfile.website}</span>
+              </div>
+            )}
             <div className="flex items-center gap-3 text-gray-600">
               <Calendar className="w-4 h-4" />
-              <span>Joined {profile.joinDate}</span>
+              <span>Joined {joinDate}</span>
             </div>
           </div>
         </div>
@@ -172,64 +276,33 @@ export default function Profile() {
               <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
               <input
                 type="text"
-                value={profile.name}
-                onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+                value={profile.full_name}
+                onChange={(e) => setProfile({ ...profile, full_name: e.target.value })}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Company</label>
-              <input
-                type="text"
-                value={profile.company}
-                onChange={(e) => setProfile({ ...profile, company: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
-              />
-            </div>
-          </div>
-
-          {/* Contact */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
               <input
                 type="email"
-                value={profile.email}
-                onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+                value={authProfile?.email || ''}
+                disabled
+                className="w-full px-4 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-500 cursor-not-allowed"
               />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Phone</label>
-              <input
-                type="tel"
-                value={profile.phone}
-                onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
-              />
+              <p className="text-xs text-gray-500 mt-1">Email cannot be changed here</p>
             </div>
           </div>
 
-          {/* Location & Website */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Location</label>
-              <input
-                type="text"
-                value={profile.location}
-                onChange={(e) => setProfile({ ...profile, location: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Website</label>
-              <input
-                type="url"
-                value={profile.website}
-                onChange={(e) => setProfile({ ...profile, website: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
-              />
-            </div>
+          {/* Website */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Website</label>
+            <input
+              type="url"
+              value={profile.website}
+              onChange={(e) => setProfile({ ...profile, website: e.target.value })}
+              placeholder="https://yourwebsite.com"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+            />
           </div>
 
           {/* Bio */}
@@ -247,9 +320,11 @@ export default function Profile() {
           <div className="flex items-center gap-3 pt-4">
             <button
               onClick={handleSave}
-              className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+              disabled={isSaving}
+              className="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
             >
-              Save Changes
+              {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+              {isSaving ? 'Saving...' : 'Save Changes'}
             </button>
             <button 
               onClick={handleCancel}

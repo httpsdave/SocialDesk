@@ -1,48 +1,106 @@
-import { useState } from 'react';
-import { Save, Bell, Lock, Palette, Globe, Shield, Eye, EyeOff } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Save, Bell, Lock, Palette, Globe, Shield, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import ConfirmationModal from '../components/ConfirmationModal';
+import { useAuth } from '../contexts/AuthContext';
+import { supabase } from '../lib/supabase';
 
 export default function Settings() {
+  const { user, profile: authProfile, refreshProfile } = useAuth();
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [passwordData, setPasswordData] = useState({
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
   });
   const [settings, setSettings] = useState({
-    // Notifications
+    // Notifications (from DB columns)
     emailNotifications: true,
     pushNotifications: false,
     weeklyReport: true,
     postReminders: true,
     
-    // Privacy
+    // Privacy (from settings_json)
     profilePublic: false,
     showEmail: false,
     allowAnalytics: true,
     
-    // Appearance
+    // Appearance (from DB columns)
     theme: 'light',
     language: 'en',
     timezone: 'UTC-5',
     
-    // Security
+    // Security (from settings_json)
     twoFactorAuth: false,
     loginAlerts: true,
   });
+
+  // Load settings from profile on mount
+  useEffect(() => {
+    if (authProfile) {
+      const extra = (authProfile.settings_json || {}) as Record<string, unknown>;
+      setSettings({
+        emailNotifications: authProfile.notification_email,
+        pushNotifications: authProfile.notification_push,
+        weeklyReport: (extra.weeklyReport as boolean) ?? true,
+        postReminders: (extra.postReminders as boolean) ?? true,
+        profilePublic: (extra.profilePublic as boolean) ?? false,
+        showEmail: (extra.showEmail as boolean) ?? false,
+        allowAnalytics: (extra.allowAnalytics as boolean) ?? true,
+        theme: authProfile.theme || 'light',
+        language: (extra.language as string) || 'en',
+        timezone: authProfile.timezone || 'UTC-5',
+        twoFactorAuth: (extra.twoFactorAuth as boolean) ?? false,
+        loginAlerts: (extra.loginAlerts as boolean) ?? true,
+      });
+    }
+  }, [authProfile]);
 
   const handleSave = () => {
     setShowSaveModal(true);
   };
 
-  const confirmSave = () => {
-    // Save settings logic here
+  const confirmSave = async () => {
+    if (!user) return;
+    setIsSaving(true);
     setShowSaveModal(false);
+
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        notification_email: settings.emailNotifications,
+        notification_push: settings.pushNotifications,
+        notification_sms: false,
+        theme: settings.theme,
+        timezone: settings.timezone,
+        settings_json: {
+          weeklyReport: settings.weeklyReport,
+          postReminders: settings.postReminders,
+          profilePublic: settings.profilePublic,
+          showEmail: settings.showEmail,
+          allowAnalytics: settings.allowAnalytics,
+          language: settings.language,
+          twoFactorAuth: settings.twoFactorAuth,
+          loginAlerts: settings.loginAlerts,
+        },
+      })
+      .eq('id', user.id);
+
+    setIsSaving(false);
+
+    if (error) {
+      toast.error('Failed to save settings');
+      console.error(error);
+      return;
+    }
+
+    await refreshProfile();
     toast.success('Settings saved successfully');
   };
 
@@ -50,7 +108,7 @@ export default function Settings() {
     setShowPasswordModal(true);
   };
 
-  const confirmPasswordChange = () => {
+  const confirmPasswordChange = async () => {
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       toast.error('Passwords do not match!');
       return;
@@ -59,7 +117,20 @@ export default function Settings() {
       toast.error('Password must be at least 8 characters long!');
       return;
     }
-    // In a real app, call backend API to change password
+
+    setIsChangingPassword(true);
+
+    const { error } = await supabase.auth.updateUser({
+      password: passwordData.newPassword,
+    });
+
+    setIsChangingPassword(false);
+
+    if (error) {
+      toast.error(error.message || 'Failed to change password');
+      return;
+    }
+
     setShowPasswordModal(false);
     setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' });
     toast.success('Password changed successfully');
@@ -75,10 +146,11 @@ export default function Settings() {
         </div>
         <button
           onClick={handleSave}
-          className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+          disabled={isSaving}
+          className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Save className="w-5 h-5" />
-          Save Changes
+          {isSaving ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+          {isSaving ? 'Saving...' : 'Save Changes'}
         </button>
       </div>
 
@@ -354,29 +426,6 @@ export default function Settings() {
             <h2 className="text-xl font-bold text-gray-900 mb-4">Change Password</h2>
             
             <div className="space-y-4">
-              {/* Current Password */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Current Password
-                </label>
-                <div className="relative">
-                  <input
-                    type={showCurrentPassword ? 'text' : 'password'}
-                    value={passwordData.currentPassword}
-                    onChange={(e) => setPasswordData({ ...passwordData, currentPassword: e.target.value })}
-                    className="w-full px-4 py-2 pr-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
-                    placeholder="Enter current password"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  >
-                    {showCurrentPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
-                </div>
-              </div>
-
               {/* New Password */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -429,9 +478,11 @@ export default function Settings() {
             <div className="flex items-center gap-3 mt-6">
               <button
                 onClick={confirmPasswordChange}
-                className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                disabled={isChangingPassword}
+                className="flex-1 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                Change Password
+                {isChangingPassword && <Loader2 className="w-4 h-4 animate-spin" />}
+                {isChangingPassword ? 'Changing...' : 'Change Password'}
               </button>
               <button
                 onClick={() => {
