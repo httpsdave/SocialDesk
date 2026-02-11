@@ -1,3 +1,4 @@
+import { useState, useMemo } from 'react';
 import { TrendingUp, TrendingDown, Users, Eye, Heart, Share2 } from 'lucide-react';
 import {
   LineChart,
@@ -15,30 +16,47 @@ import {
   Cell,
 } from 'recharts';
 
-const weeklyGrowthData = [
-  { date: 'Feb 4', facebook: 240, instagram: 180, tiktok: 150 },
-  { date: 'Feb 5', facebook: 280, instagram: 220, tiktok: 190 },
-  { date: 'Feb 6', facebook: 260, instagram: 200, tiktok: 170 },
-  { date: 'Feb 7', facebook: 320, instagram: 260, tiktok: 210 },
-  { date: 'Feb 8', facebook: 380, instagram: 300, tiktok: 250 },
-  { date: 'Feb 9', facebook: 350, instagram: 280, tiktok: 230 },
-  { date: 'Feb 10', facebook: 400, instagram: 320, tiktok: 270 },
-];
+// Generate data for different date ranges
+const generateData = (days: number) => {
+  const data = [];
+  const startDate = new Date();
+  startDate.setDate(startDate.getDate() - days);
+  
+  for (let i = 0; i < days; i++) {
+    const date = new Date(startDate);
+    date.setDate(date.getDate() + i);
+    const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    
+    data.push({
+      date: dateStr,
+      facebook: Math.floor(Math.random() * 200) + 200,
+      instagram: Math.floor(Math.random() * 150) + 150,
+      tiktok: Math.floor(Math.random() * 120) + 120,
+      x: Math.floor(Math.random() * 100) + 100,
+      youtube: Math.floor(Math.random() * 180) + 160,
+      'youtube-shorts': Math.floor(Math.random() * 140) + 130,
+    });
+  }
+  return data;
+};
 
-const engagementData = [
-  { day: 'Mon', likes: 420, comments: 120, shares: 80 },
-  { day: 'Tue', likes: 580, comments: 180, shares: 110 },
-  { day: 'Wed', likes: 520, comments: 150, shares: 95 },
-  { day: 'Thu', likes: 680, comments: 220, shares: 140 },
-  { day: 'Fri', likes: 750, comments: 280, shares: 180 },
-  { day: 'Sat', likes: 640, comments: 200, shares: 130 },
-  { day: 'Sun', likes: 590, comments: 170, shares: 115 },
-];
+const generateEngagementData = (days: number) => {
+  const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  return dayNames.map((day) => ({
+    day,
+    likes: Math.floor(Math.random() * 300) + 400,
+    comments: Math.floor(Math.random() * 150) + 100,
+    shares: Math.floor(Math.random() * 100) + 80,
+  }));
+};
 
 const platformDistribution = [
-  { name: 'Facebook', value: 45, color: '#3b5998' },
-  { name: 'Instagram', value: 30, color: '#E4405F' },
-  { name: 'TikTok', value: 25, color: '#000000' },
+  { name: 'Facebook', value: 22, color: '#3b5998' },
+  { name: 'Instagram', value: 20, color: '#E4405F' },
+  { name: 'TikTok', value: 18, color: '#000000' },
+  { name: 'X', value: 15, color: '#1DA1F2' },
+  { name: 'YouTube', value: 13, color: '#FF0000' },
+  { name: 'YouTube Shorts', value: 12, color: '#FF4444' },
 ];
 
 const topPosts = [
@@ -71,14 +89,29 @@ const topPosts = [
   },
 ];
 
-const metrics = [
-  { label: 'Total Reach', value: '156.2K', change: '+18.5%', trending: 'up', icon: Eye },
-  { label: 'Engagement Rate', value: '8.4%', change: '+2.3%', trending: 'up', icon: Heart },
-  { label: 'New Followers', value: '+1,234', change: '+12.5%', trending: 'up', icon: Users },
-  { label: 'Share Rate', value: '3.2%', change: '-0.8%', trending: 'down', icon: Share2 },
-];
+const getMetrics = (dateRange: string) => {
+  const multiplier = dateRange === 'year' ? 12 : dateRange === '3months' ? 3 : dateRange === '30days' ? 1 : 0.25;
+  return [
+    { label: 'Total Reach', value: `${(156.2 * multiplier).toFixed(1)}K`, change: '+18.5%', trending: 'up', icon: Eye },
+    { label: 'Engagement Rate', value: '8.4%', change: '+2.3%', trending: 'up', icon: Heart },
+    { label: 'New Followers', value: `+${Math.floor(1234 * multiplier).toLocaleString()}`, change: '+12.5%', trending: 'up', icon: Users },
+    { label: 'Share Rate', value: '3.2%', change: '-0.8%', trending: 'down', icon: Share2 },
+  ];
+};
 
 export default function Analytics() {
+  const [dateRange, setDateRange] = useState<string>('7days');
+
+  const weeklyGrowthData = useMemo(() => {
+    const days = dateRange === 'year' ? 365 : dateRange === '3months' ? 90 : dateRange === '30days' ? 30 : 7;
+    return generateData(days);
+  }, [dateRange]);
+
+  const engagementData = useMemo(() => {
+    return generateEngagementData(7);
+  }, [dateRange]);
+
+  const metrics = useMemo(() => getMetrics(dateRange), [dateRange]);
   return (
     <div className="p-4 lg:p-8 space-y-6">
       {/* Header */}
@@ -88,11 +121,15 @@ export default function Analytics() {
           <p className="text-gray-600">Track your performance and growth trends</p>
         </div>
         <div className="flex items-center gap-2">
-          <select className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none">
-            <option>Last 7 days</option>
-            <option>Last 30 days</option>
-            <option>Last 3 months</option>
-            <option>Last year</option>
+          <select 
+            value={dateRange}
+            onChange={(e) => setDateRange(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none"
+          >
+            <option value="7days">Last 7 days</option>
+            <option value="30days">Last 30 days</option>
+            <option value="3months">Last 3 months</option>
+            <option value="year">Last year</option>
           </select>
         </div>
       </div>
@@ -155,6 +192,27 @@ export default function Analytics() {
               stroke="#000000"
               strokeWidth={2}
               name="TikTok"
+            />
+            <Line
+              type="monotone"
+              dataKey="x"
+              stroke="#1DA1F2"
+              strokeWidth={2}
+              name="X"
+            />
+            <Line
+              type="monotone"
+              dataKey="youtube"
+              stroke="#FF0000"
+              strokeWidth={2}
+              name="YouTube"
+            />
+            <Line
+              type="monotone"
+              dataKey="youtube-shorts"
+              stroke="#FF4444"
+              strokeWidth={2}
+              name="YouTube Shorts"
             />
           </LineChart>
         </ResponsiveContainer>

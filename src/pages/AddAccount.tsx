@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Facebook, Instagram, Twitter, Linkedin, Youtube, Check } from 'lucide-react';
+import { toast } from 'sonner';
 import ConfirmationModal from '../components/ConfirmationModal';
 
 interface SocialPlatform {
@@ -88,6 +89,7 @@ export default function AddAccount() {
         p.id === selectedPlatform.id ? { ...p, connected: true } : p
       ));
       setShowConnectModal(false);
+      toast.success(`${selectedPlatform.name} connected successfully`);
       setSelectedPlatform(null);
     }
   };

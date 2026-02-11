@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import { Camera, Mail, Phone, MapPin, Calendar, Award, BarChart3 } from 'lucide-react';
+import { toast } from 'sonner';
 import ConfirmationModal from '../components/ConfirmationModal';
 
 export default function Profile() {
   const [showSaveModal, setShowSaveModal] = useState(false);
-  const [profile, setProfile] = useState({
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [originalProfile, setOriginalProfile] = useState({
     name: 'Sarah Johnson',
     email: 'sarah.johnson@example.com',
     phone: '+1 (555) 123-4567',
@@ -14,6 +18,7 @@ export default function Profile() {
     website: 'www.creativeagency.com',
     joinDate: 'January 2024',
   });
+  const [profile, setProfile] = useState(originalProfile);
 
   const stats = [
     { label: 'Posts Created', value: '248', icon: BarChart3 },
@@ -21,13 +26,51 @@ export default function Profile() {
     { label: 'Accounts Managed', value: '6', icon: Calendar },
   ];
 
+  const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setAvatarFile(file);
+      toast.success('Avatar uploaded successfully');
+      // In a real app, upload to server and update profile
+    }
+  };
+
+  const handleCoverUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setCoverFile(file);
+      toast.success('Cover photo uploaded successfully');
+      // In a real app, upload to server and update cover
+    }
+  };
+
+  const handleCancel = () => {
+    setProfile(originalProfile);
+    setAvatarFile(null);
+    setCoverFile(null);
+    toast.info('Changes cancelled');
+  };
+
   const handleSave = () => {
     setShowSaveModal(true);
   };
 
   const confirmSave = () => {
-    // Save profile logic here
+    setOriginalProfile(profile);
     setShowSaveModal(false);
+    toast.success('Profile updated successfully');
+    // In a real app, save to backend here
+  };
+
+  const handleDeleteAccount = () => {
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = () => {
+    // In a real app, delete account and redirect to login
+    setShowDeleteModal(false);
+    toast.success('Account deleted successfully');
+    console.log('Account deleted');
   };
 
   return (
@@ -42,9 +85,15 @@ export default function Profile() {
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
         {/* Cover Image */}
         <div className="h-32 bg-gradient-to-r from-purple-600 to-blue-600 relative">
-          <button className="absolute top-4 right-4 p-2 bg-white bg-opacity-20 backdrop-blur-sm rounded-lg text-white hover:bg-opacity-30 transition-colors">
+          <label className="absolute top-4 right-4 p-2 bg-white bg-opacity-20 backdrop-blur-sm rounded-lg text-white hover:bg-opacity-30 transition-colors cursor-pointer">
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleCoverUpload}
+              className="hidden"
+            />
             <Camera className="w-5 h-5" />
-          </button>
+          </label>
         </div>
 
         {/* Profile Info */}
@@ -54,9 +103,15 @@ export default function Profile() {
             <div className="w-32 h-32 rounded-full bg-gradient-to-br from-purple-400 to-blue-400 border-4 border-white flex items-center justify-center text-white text-4xl font-bold">
               SJ
             </div>
-            <button className="absolute bottom-2 right-2 p-2 bg-purple-600 rounded-full text-white hover:bg-purple-700 transition-colors shadow-lg">
+            <label className="absolute bottom-2 right-2 p-2 bg-purple-600 rounded-full text-white hover:bg-purple-700 transition-colors shadow-lg cursor-pointer">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleAvatarUpload}
+                className="hidden"
+              />
               <Camera className="w-4 h-4" />
-            </button>
+            </label>
           </div>
 
           {/* Name & Title */}
@@ -196,7 +251,10 @@ export default function Profile() {
             >
               Save Changes
             </button>
-            <button className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+            <button 
+              onClick={handleCancel}
+              className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+            >
               Cancel
             </button>
           </div>
@@ -209,7 +267,10 @@ export default function Profile() {
         <p className="text-gray-600 mb-4">
           Once you delete your account, there is no going back. Please be certain.
         </p>
-        <button className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors">
+        <button 
+          onClick={handleDeleteAccount}
+          className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+        >
           Delete Account
         </button>
       </div>
@@ -223,6 +284,17 @@ export default function Profile() {
         message="Are you sure you want to update your profile information?"
         confirmText="Save"
         type="info"
+      />
+
+      {/* Delete Account Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        onConfirm={confirmDelete}
+        title="Delete Account?"
+        message="Are you absolutely sure? This action cannot be undone. All your data will be permanently deleted."
+        confirmText="Delete Forever"
+        type="danger"
       />
     </div>
   );

@@ -2,9 +2,11 @@ import { Outlet, NavLink, useNavigate } from 'react-router';
 import { LayoutDashboard, Calendar, BarChart3, Settings, LogOut, Menu, X, User, ChevronUp, Link } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import ConfirmationModal from './ConfirmationModal';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function MainLayout() {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarPinned, setSidebarPinned] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -59,6 +61,7 @@ export default function MainLayout() {
 
   const confirmLogout = () => {
     setShowLogoutModal(false);
+    logout();
     navigate('/');
   };
 

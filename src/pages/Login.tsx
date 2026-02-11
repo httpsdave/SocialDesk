@@ -1,10 +1,15 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { User, Lock, Eye, EyeOff, TrendingUp, BarChart3, Zap, ArrowRight, Mail } from 'lucide-react';
+import { User, Lock, Eye, EyeOff, TrendingUp, BarChart3, Zap, ArrowRight, Mail, AlertCircle } from 'lucide-react';
+import { toast } from 'sonner';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function Login() {
   const navigate = useNavigate();
-  const [showPassword, setShowPassword] = useState(false);
+  const { login } = useAuth();
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showSignUpPassword, setShowSignUpPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSignUp, setIsSignUp] = useState(false);
@@ -12,19 +17,64 @@ export default function Login() {
   const [signUpEmail, setSignUpEmail] = useState('');
   const [signUpPassword, setSignUpPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [errors, setErrors] = useState<{
+    signUpEmail?: string;
+    signUpPassword?: string;
+    confirmPassword?: string;
+  }>({});
+
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
+    // Call login from auth context
+    login();
+    toast.success('Logged in successfully!');
     navigate('/app');
   };
 
   const handleSignUp = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Reset errors
+    const newErrors: typeof errors = {};
+    
+    // Validate email format
+    if (!validateEmail(signUpEmail)) {
+      newErrors.signUpEmail = 'Please enter a valid email address';
+    }
+    
+    // Validate password length
+    if (signUpPassword.length < 8) {
+      newErrors.signUpPassword = 'Password must be at least 8 characters long';
+    }
+    
+    // Validate passwords match
+    if (signUpPassword !== confirmPassword) {
+      newErrors.confirmPassword = 'Passwords do not match';
+    }
+    
+    setErrors(newErrors);
+    
+    // If there are errors, show toast and don't proceed
+    if (Object.keys(newErrors).length > 0) {
+      toast.error('Please fix the errors in the form');
+      return;
+    }
+    
+    // Success - show toast and navigate
+    login();
+    toast.success('Account created successfully!');
     navigate('/app');
   };
 
   const handleGoogleLogin = () => {
     // Mock Google login
+    login();
+    toast.success('Logged in with Google!');
     navigate('/app');
   };
 
@@ -119,7 +169,7 @@ export default function Login() {
               </div>
               <input
                 id="password"
-                type={showPassword ? 'text' : 'password'}
+                type={showLoginPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder=" "
@@ -134,10 +184,10 @@ export default function Login() {
               </label>
               <button
                 type="button"
-                onClick={() => setShowPassword(!showPassword)}
+                onClick={() => setShowLoginPassword(!showLoginPassword)}
                 className="absolute inset-y-0 right-0 pr-4 flex items-center z-10"
               >
-                {showPassword ? (
+                {showLoginPassword ? (
                   <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
                 ) : (
                   <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
@@ -252,17 +302,32 @@ export default function Login() {
                 id="signup-email"
                 type="email"
                 value={signUpEmail}
-                onChange={(e) => setSignUpEmail(e.target.value)}
+                onChange={(e) => {
+                  setSignUpEmail(e.target.value);
+                  if (errors.signUpEmail) {
+                    setErrors(prev => ({ ...prev, signUpEmail: undefined }));
+                  }
+                }}
                 placeholder=" "
-                className="block w-full pl-11 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent focus:bg-white outline-none transition-all peer"
+                className={`block w-full pl-11 pr-4 py-3.5 bg-gray-50 border rounded-xl focus:ring-2 focus:border-transparent focus:bg-white outline-none transition-all peer ${
+                  errors.signUpEmail ? 'border-red-300 focus:ring-red-500' : 'border-gray-200 focus:ring-purple-500'
+                }`}
                 required
               />
               <label 
                 htmlFor="signup-email" 
-                className="absolute left-11 top-3.5 text-gray-500 transition-all duration-200 peer-placeholder-shown:top-3.5 peer-placeholder-shown:text-base peer-focus:top-[-10px] peer-focus:left-3 peer-focus:text-xs peer-focus:text-purple-600 peer-focus:bg-white peer-focus:px-1 peer-[:not(:placeholder-shown)]:top-[-10px] peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:text-gray-600 peer-[:not(:placeholder-shown)]:bg-white peer-[:not(:placeholder-shown)]:px-1"
+                className={`absolute left-11 top-3.5 transition-all duration-200 peer-placeholder-shown:top-3.5 peer-placeholder-shown:text-base peer-focus:top-[-10px] peer-focus:left-3 peer-focus:text-xs peer-focus:bg-white peer-focus:px-1 peer-[:not(:placeholder-shown)]:top-[-10px] peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:bg-white peer-[:not(:placeholder-shown)]:px-1 ${
+                  errors.signUpEmail ? 'text-red-500 peer-focus:text-red-600 peer-[:not(:placeholder-shown)]:text-red-600' : 'text-gray-500 peer-focus:text-purple-600 peer-[:not(:placeholder-shown)]:text-gray-600'
+                }`}
               >
                 Email
               </label>
+              {errors.signUpEmail && (
+                <div className="flex items-center gap-1 mt-1.5 text-xs text-red-600">
+                  <AlertCircle className="w-3 h-3" />
+                  <span>{errors.signUpEmail}</span>
+                </div>
+              )}
             </div>
 
             <div className="relative">
@@ -271,30 +336,46 @@ export default function Login() {
               </div>
               <input
                 id="signup-password"
-                type={showPassword ? 'text' : 'password'}
+                type={showSignUpPassword ? 'text' : 'password'}
                 value={signUpPassword}
-                onChange={(e) => setSignUpPassword(e.target.value)}
+                onChange={(e) => {
+                  setSignUpPassword(e.target.value);
+                  if (errors.signUpPassword) {
+                    setErrors(prev => ({ ...prev, signUpPassword: undefined }));
+                  }
+                }}
                 placeholder=" "
-                className="block w-full pl-11 pr-11 py-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent focus:bg-white outline-none transition-all peer"
+                className={`block w-full pl-11 pr-11 py-3.5 bg-gray-50 border rounded-xl focus:ring-2 focus:border-transparent focus:bg-white outline-none transition-all peer ${
+                  errors.signUpPassword ? 'border-red-300 focus:ring-red-500' : 'border-gray-200 focus:ring-purple-500'
+                }`}
                 required
+                minLength={8}
               />
               <label 
                 htmlFor="signup-password" 
-                className="absolute left-11 top-3.5 text-gray-500 transition-all duration-200 peer-placeholder-shown:top-3.5 peer-placeholder-shown:text-base peer-focus:top-[-10px] peer-focus:left-3 peer-focus:text-xs peer-focus:text-purple-600 peer-focus:bg-white peer-focus:px-1 peer-[:not(:placeholder-shown)]:top-[-10px] peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:text-gray-600 peer-[:not(:placeholder-shown)]:bg-white peer-[:not(:placeholder-shown)]:px-1"
+                className={`absolute left-11 top-3.5 transition-all duration-200 peer-placeholder-shown:top-3.5 peer-placeholder-shown:text-base peer-focus:top-[-10px] peer-focus:left-3 peer-focus:text-xs peer-focus:bg-white peer-focus:px-1 peer-[:not(:placeholder-shown)]:top-[-10px] peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:bg-white peer-[:not(:placeholder-shown)]:px-1 ${
+                  errors.signUpPassword ? 'text-red-500 peer-focus:text-red-600 peer-[:not(:placeholder-shown)]:text-red-600' : 'text-gray-500 peer-focus:text-purple-600 peer-[:not(:placeholder-shown)]:text-gray-600'
+                }`}
               >
                 Password
               </label>
               <button
                 type="button"
-                onClick={() => setShowPassword(!showPassword)}
+                onClick={() => setShowSignUpPassword(!showSignUpPassword)}
                 className="absolute inset-y-0 right-0 pr-4 flex items-center z-10"
               >
-                {showPassword ? (
+                {showSignUpPassword ? (
                   <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
                 ) : (
                   <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
                 )}
               </button>
+              {errors.signUpPassword && (
+                <div className="flex items-center gap-1 mt-1.5 text-xs text-red-600">
+                  <AlertCircle className="w-3 h-3" />
+                  <span>{errors.signUpPassword}</span>
+                </div>
+              )}
             </div>
 
             <div className="relative">
@@ -303,19 +384,45 @@ export default function Login() {
               </div>
               <input
                 id="confirm-password"
-                type={showPassword ? 'text' : 'password'}
+                type={showConfirmPassword ? 'text' : 'password'}
                 value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                onChange={(e) => {
+                  setConfirmPassword(e.target.value);
+                  if (errors.confirmPassword) {
+                    setErrors(prev => ({ ...prev, confirmPassword: undefined }));
+                  }
+                }}
                 placeholder=" "
-                className="block w-full pl-11 pr-4 py-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent focus:bg-white outline-none transition-all peer"
+                className={`block w-full pl-11 pr-11 py-3.5 bg-gray-50 border rounded-xl focus:ring-2 focus:border-transparent focus:bg-white outline-none transition-all peer ${
+                  errors.confirmPassword ? 'border-red-300 focus:ring-red-500' : 'border-gray-200 focus:ring-purple-500'
+                }`}
                 required
               />
               <label 
                 htmlFor="confirm-password" 
-                className="absolute left-11 top-3.5 text-gray-500 transition-all duration-200 peer-placeholder-shown:top-3.5 peer-placeholder-shown:text-base peer-focus:top-[-10px] peer-focus:left-3 peer-focus:text-xs peer-focus:text-purple-600 peer-focus:bg-white peer-focus:px-1 peer-[:not(:placeholder-shown)]:top-[-10px] peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:text-gray-600 peer-[:not(:placeholder-shown)]:bg-white peer-[:not(:placeholder-shown)]:px-1"
+                className={`absolute left-11 top-3.5 transition-all duration-200 peer-placeholder-shown:top-3.5 peer-placeholder-shown:text-base peer-focus:top-[-10px] peer-focus:left-3 peer-focus:text-xs peer-focus:bg-white peer-focus:px-1 peer-[:not(:placeholder-shown)]:top-[-10px] peer-[:not(:placeholder-shown)]:left-3 peer-[:not(:placeholder-shown)]:text-xs peer-[:not(:placeholder-shown)]:bg-white peer-[:not(:placeholder-shown)]:px-1 ${
+                  errors.confirmPassword ? 'text-red-500 peer-focus:text-red-600 peer-[:not(:placeholder-shown)]:text-red-600' : 'text-gray-500 peer-focus:text-purple-600 peer-[:not(:placeholder-shown)]:text-gray-600'
+                }`}
               >
                 Confirm Password
               </label>
+              <button
+                type="button"
+                onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                className="absolute inset-y-0 right-0 pr-4 flex items-center z-10"
+              >
+                {showConfirmPassword ? (
+                  <EyeOff className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                ) : (
+                  <Eye className="h-5 w-5 text-gray-400 hover:text-gray-600" />
+                )}
+              </button>
+              {errors.confirmPassword && (
+                <div className="flex items-center gap-1 mt-1.5 text-xs text-red-600">
+                  <AlertCircle className="w-3 h-3" />
+                  <span>{errors.confirmPassword}</span>
+                </div>
+              )}
             </div>
 
             <button
