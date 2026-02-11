@@ -1,5 +1,5 @@
 import { Outlet, NavLink, useNavigate } from 'react-router';
-import { LayoutDashboard, Calendar, BarChart3, Settings, LogOut, Menu, X, User, ChevronUp } from 'lucide-react';
+import { LayoutDashboard, Calendar, BarChart3, Settings, LogOut, Menu, X, User, ChevronUp, Link } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import ConfirmationModal from './ConfirmationModal';
 
@@ -16,6 +16,7 @@ export default function MainLayout() {
     { path: '/app', label: 'Dashboard', icon: LayoutDashboard, end: true },
     { path: '/app/schedule', label: 'Schedule Posts', icon: Calendar },
     { path: '/app/analytics', label: 'Analytics', icon: BarChart3 },
+    { path: '/app/add-account', label: 'Connect Platforms', icon: Link },
   ];
 
   // Handle click outside sidebar to collapse when not pinned
